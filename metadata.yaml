@@ -1,0 +1,7 @@
+name: astrbot_plugin_pc_agent
+display_name: 远程电脑代理
+desc: 管理员专用。通过 QQ 远程调度本机的命令行 AI（Codex / Claude Code / aider 等），跑完主动把输出推给你；额度耗尽自动等待、恢复后自动续跑；支持“你自己决定”的自主多轮目标循环，以及每轮自动跑测试、不过就自己接着修的验收关卡；支持 Windows 远程节点（断网不丢输出、断电可续）。
+short_desc: 不在电脑前，也让 Codex / Claude Code 继续替你干活
+version: 0.3.5
+author: 无所谓～～ & 琴葉
+repo: ""

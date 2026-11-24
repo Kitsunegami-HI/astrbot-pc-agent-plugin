@@ -1,0 +1,247 @@
+{
+  "admin_qq": {
+    "type": "list",
+    "description": "允许使用本插件的 QQ 号",
+    "default": [],
+    "hint": "留空则回落到 AstrBot 的全局管理员判定；填了就只认这些人。"
+  },
+  "working_dir": {
+    "type": "string",
+    "description": "默认工作目录",
+    "default": "",
+    "hint": "必填（或给每个软件单独配 cwd）。没配或目录不存在时拒绝开跑，绝不会跑到 AstrBot 自己的目录里。"
+  },
+  "projects": {
+    "type": "dict",
+    "description": "项目目录（可选，key=项目名）",
+    "default": {},
+    "hint": "例如 {\"blog\": \"D:\\\\code\\\\blog\"}，用 /pc run codex@blog <指令> 在这个目录里跑。"
+  },
+  "software": {
+    "type": "dict",
+    "description": "软件白名单（key = 软件名）",
+    "default": {
+      "codex": {
+        "cmd": [
+          "codex",
+          "exec",
+          "--skip-git-repo-check",
+          "{prompt}"
+        ],
+        "resume": [
+          "codex",
+          "exec",
+          "resume",
+          "--last",
+          "{prompt}"
+        ],
+        "cwd": "",
+        "timeout": 0,
+        "prompt_via": "arg",
+        "env": {},
+        "verify": [],
+        "verify_timeout": 600,
+        "verify_shell": false,
+        "session_pattern": "",
+        "quota_patterns": []
+      },
+      "claude": {
+        "cmd": [
+          "claude",
+          "-p"
+        ],
+        "resume": [
+          "claude",
+          "-p",
+          "--continue"
+        ],
+        "cwd": "",
+        "timeout": 0,
+        "prompt_via": "stdin",
+        "env": {},
+        "verify": [],
+        "verify_timeout": 600,
+        "verify_shell": false,
+        "session_pattern": "",
+        "quota_patterns": []
+      },
+      "aider": {
+        "cmd": [
+          "aider",
+          "--yes-always",
+          "--message",
+          "{prompt}"
+        ],
+        "resume": [
+          "aider",
+          "--yes-always",
+          "--message",
+          "{prompt}"
+        ],
+        "cwd": "",
+        "timeout": 0,
+        "prompt_via": "arg",
+        "env": {},
+        "verify": [],
+        "verify_timeout": 600,
+        "verify_shell": false,
+        "session_pattern": "",
+        "quota_patterns": []
+      }
+    },
+    "hint": "只有这里列出的软件能被调用。cmd/resume 是命令模板（数组），{prompt} 换成指令，{session} 换成抓到的会话 id；prompt_via=stdin 时指令从标准输入喂进去。timeout=0 表示用 default_timeout。verify 是验收命令（如 [\"npm\",\"test\"]），每轮跑完自动执行，不过就带着失败输出再修；verify_shell=true 时 verify 交给系统 shell，可写 &&。详见 README。 加 \"node\": \"节点名\" 就派给远程 Windows 客户端执行（cwd 写那台电脑上的路径）。"
+  },
+  "output_tail_lines": {
+    "type": "int",
+    "description": "每轮输出保留最后多少行（另保留开头 push_head_lines 行）",
+    "default": 200
+  },
+  "push_tail_lines": {
+    "type": "int",
+    "description": "推送时展示末尾多少行",
+    "default": 40
+  },
+  "push_head_lines": {
+    "type": "int",
+    "description": "推送时额外带上开头多少行",
+    "default": 20
+  },
+  "push_chunk_chars": {
+    "type": "int",
+    "description": "单条 QQ 消息最大字数",
+    "default": 1200
+  },
+  "push_max_messages": {
+    "type": "int",
+    "description": "一次推送最多拆成几条消息",
+    "default": 4,
+    "hint": "超出的部分提示用 /pc log 查看，避免刷屏被风控。"
+  },
+  "push_max_chars": {
+    "type": "int",
+    "description": "一轮输出推送的总字数上限",
+    "default": 3000
+  },
+  "notify_session": {
+    "type": "string",
+    "description": "兜底推送会话（一般留空）",
+    "default": "",
+    "hint": "任务没有来源会话时往这里推。格式是 AstrBot 的 unified_msg_origin，如 aiocqhttp:FriendMessage:123456。"
+  },
+  "default_timeout": {
+    "type": "int",
+    "description": "单轮默认超时秒数（软件 timeout=0 时用它）",
+    "default": 1800
+  },
+  "live_push_seconds": {
+    "type": "int",
+    "description": "运行中每 N 秒推一次新输出（0=关）",
+    "default": 0
+  },
+  "passive_reply": {
+    "type": "bool",
+    "description": "任务等待输入时，直接说话就当作给它的下一条指令",
+    "default": true
+  },
+  "queue_same_dir": {
+    "type": "bool",
+    "description": "同一目录同一时间只跑一个任务，其余排队",
+    "default": true,
+    "hint": "两个 AI 同时改一个项目会互相覆盖，建议保持开启。"
+  },
+  "resume_interrupted": {
+    "type": "bool",
+    "description": "AstrBot 重启/插件重载打断的任务，恢复后自动续跑",
+    "default": false,
+    "hint": "关闭时只通知你，用 /pc go 手动续。"
+  },
+  "quota_default_wait_minutes": {
+    "type": "int",
+    "description": "识别到额度耗尽但读不出重置时间时，等待多少分钟再试",
+    "default": 60
+  },
+  "verify_max_attempts": {
+    "type": "int",
+    "description": "验收失败后最多自动再修几轮（0=只验不修）",
+    "default": 3
+  },
+  "autopilot_max_rounds": {
+    "type": "int",
+    "description": "自主模式最多轮数",
+    "default": 6
+  },
+  "autopilot_max_minutes": {
+    "type": "int",
+    "description": "自主模式总时长上限（分钟）",
+    "default": 120
+  },
+  "autopilot_sentinel": {
+    "type": "string",
+    "description": "LLM 表示目标完成的哨兵词",
+    "default": "__DONE__"
+  },
+  "watch_interval_seconds": {
+    "type": "int",
+    "description": "后台巡检间隔（秒），负责额度恢复后续跑",
+    "default": 30
+  },
+  "enable_llm_tool": {
+    "type": "bool",
+    "description": "允许 AstrBot 的模型在聊天中自己调用本插件开任务",
+    "default": false,
+    "hint": "开启后仍只认管理员的消息。会增加误触发风险，按需开启。"
+  },
+  "nodes": {
+    "type": "dict",
+    "description": "远程节点（key=节点名）",
+    "default": {},
+    "hint": "例如 {\"mypc\": {\"token\": \"一串足够长的随机字符\", \"machine_id\": \"\"}}。只有登记过、token 对得上的节点能注册；machine_id 填了就只认那台机器（/pc node 能看到它上报的机器码）。"
+  },
+  "node_listen_enable": {
+    "type": "bool",
+    "description": "开启远程节点监听",
+    "default": false
+  },
+  "node_listen_host": {
+    "type": "string",
+    "description": "监听地址",
+    "default": "127.0.0.1",
+    "hint": "默认只监听本机，配合 Nginx/Caddy 反代出 wss（推荐）。要让客户端直连本端口才填 0.0.0.0——此时务必同时配置 node_ssl_cert/node_ssl_key，否则是全网卡明文 ws，token 会被看见。"
+  },
+  "node_listen_port": {
+    "type": "int",
+    "description": "监听端口",
+    "default": 8765
+  },
+  "node_ws_path": {
+    "type": "string",
+    "description": "WebSocket 路径",
+    "default": "/pc-agent/ws"
+  },
+  "node_ssl_cert": {
+    "type": "string",
+    "description": "TLS 证书路径（直接提供 wss 时填）",
+    "default": "",
+    "hint": "留空则监听明文 ws，需要前面有反代提供 wss。"
+  },
+  "node_ssl_key": {
+    "type": "string",
+    "description": "TLS 私钥路径",
+    "default": ""
+  },
+  "node_offline_notify_minutes": {
+    "type": "int",
+    "description": "节点离线超过多少分钟且有任务在等它时提醒一次（0=不提醒）",
+    "default": 10
+  },
+  "node_interrupted_policy": {
+    "type": "string",
+    "description": "节点断电/崩溃打断了一轮时怎么办",
+    "default": "ask",
+    "options": [
+      "ask",
+      "resume"
+    ],
+    "hint": "ask=停下等你回话；resume=开机重连后自动续跑（同一次最多 3 次）。"
+  }
+}

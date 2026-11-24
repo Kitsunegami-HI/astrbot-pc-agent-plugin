@@ -1,0 +1,17 @@
+# 运行时产物，绝不能进仓库或发布包
+# client_config.json 里有节点 token（等于能让服务器在你电脑上执行命令的钥匙），只发 client_config.example.json
+node_client/client_config.json
+client_config.json
+# 节点本地数据：待补发队列（含任务指令和输出）、日志、单实例锁
+node_client/node_data/
+node_data/
+spool.db
+spool.db-*
+*.log
+node.lock
+# Python 缓存
+__pycache__/
+*.pyc
+# 系统杂项
+.DS_Store
+Thumbs.db

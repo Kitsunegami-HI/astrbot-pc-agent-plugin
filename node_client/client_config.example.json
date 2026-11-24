@@ -1,0 +1,13 @@
+{
+  "server_url": "wss://bot.example.com/pc-agent/ws",
+  "node_id": "mypc",
+  "token": "和服务端 nodes 里填的同一串随机字符",
+  "allowed_roots": ["D:\\code"],
+  "allowed_commands": ["codex", "claude", "npm", "npx", "node", "python", "py", "pytest", "git"],
+  "allow_shell": false,
+  "ca_file": "",
+  "cold_start_delay_seconds": 75,
+  "backoff_min_seconds": 5,
+  "backoff_max_seconds": 300,
+  "keep_awake": true
+}
