@@ -269,6 +269,7 @@ class Executor:
         self.cancels: dict[str, asyncio.Event] = {}
         self.pre_cancel: set[str] = set()  # 取消比派活先到（或派活还没起进程）时，先记下取消意图
         self.tasks: dict[str, asyncio.Task] = {}
+        self.stopping = False
 
     def recover_after_crash(self) -> list[str]:
         """上次没跑完的任务（断电/崩溃/被杀）：明确上报“被中断”，不当成正常结束。"""
@@ -321,6 +322,13 @@ class Executor:
             if len(self.pre_cancel) > 1000:
                 self.pre_cancel.clear()
             self.pre_cancel.add(job_id)
+
+    async def shutdown(self) -> None:
+        self.stopping = True
+        for ev in self.cancels.values():
+            ev.set()
+        await asyncio.gather(*(task for task in self.tasks.values() if not task.done()),
+                             return_exceptions=True)
 
     def _check(self, payload: dict) -> str:
         cwd = str(payload.get("cwd") or "")
@@ -403,7 +411,10 @@ class Executor:
             kw["start_new_session"] = True
         if cancel.is_set():
             log.info(f"[{job_id}] 还没启动就被取消了")
-            finish(exit_code=-1, cancelled=True, error="还没启动就被取消了")
+            if self.stopping:
+                finish(exit_code=-1, interrupted=True, error="节点断开时这一轮尚未启动")
+            else:
+                finish(exit_code=-1, cancelled=True, error="还没启动就被取消了")
             return
         log.info(f"[{job_id}] 开始：{shell_cmd or ' '.join(argv)[:200]}  @ {p.get('cwd')}")
         try:
@@ -492,7 +503,10 @@ class Executor:
                     t.cancel()
             self.cancels.pop(job_id, None)
         code = proc.returncode if proc.returncode is not None else -1
-        finish(exit_code=code, timed_out=timed_out, cancelled=cancelled)
+        if cancelled and self.stopping:
+            finish(exit_code=-1, interrupted=True, error="Windows 节点主动断开，此轮任务已中断")
+        else:
+            finish(exit_code=code, timed_out=timed_out, cancelled=cancelled)
 
 
 async def kill_tree(proc) -> None:
@@ -568,15 +582,20 @@ async def diagnose(cfg: dict, host: str, port: int) -> str:
 
 # ====================================================================== 连接
 class Node:
-    def __init__(self, cfg: dict, spool: Spool, executor: Executor):
+    def __init__(self, cfg: dict, spool: Spool, executor: Executor, on_status=None):
         self.cfg = cfg
         self.spool = spool
         self.ex = executor
+        self.on_status = on_status
         u = urlparse(cfg["server_url"])
         self.host = u.hostname or ""
         self.port = u.port or (443 if u.scheme == "wss" else 80)
         self.last_reason = spool.get("last_offline_reason", "")
         self.unclean = False
+
+    def status(self, state: str, detail: str = "") -> None:
+        if self.on_status is not None:
+            self.on_status(state, detail)
 
     def ssl_ctx(self):
         if not self.cfg["server_url"].startswith("wss://"):
@@ -598,6 +617,7 @@ class Node:
             wait = max(0.0, float(self.cfg["cold_start_delay_seconds"]) - up) + random.uniform(0, 15)
             if wait > 0:
                 log.info(f"开机不久（{int(up)} 秒），等待网络就绪：{int(wait)} 秒后开始连接，期间不再刷日志")
+                self.status("waiting", f"约 {int(wait)} 秒后开始连接")
                 await asyncio.sleep(wait)
             delay = max(delay, 15.0)  # 冷启动从较低频率开始退避
         fails, first_fail_at, logged_reason = 0, 0.0, ""
@@ -605,6 +625,7 @@ class Node:
             started = time.time()
             reason = ""
             connected = False
+            self.status("connecting")
             try:
                 async with websockets.connect(
                         self.cfg["server_url"], ssl=self.ssl_ctx(), open_timeout=20,
@@ -619,6 +640,7 @@ class Node:
                 raise
             except Exception as exc:
                 reason = f"{type(exc).__name__}: {exc}"
+            self.status("retrying", reason[:200])
             # —— 断了：诊断原因，只在原因变化时写日志 ——
             lived = time.time() - started
             if lived > 60:
@@ -643,6 +665,7 @@ class Node:
             if code == "REJECT":
                 delay = backoff_max  # 被拒是配置问题，别狂刷
             sleep = random.uniform(delay * 0.5, delay)  # 抖动，避免和别的程序扎堆重试
+            self.status("retrying", f"{diag[:200]}，约 {max(1, round(sleep))} 秒后重试")
             await asyncio.sleep(sleep)
             delay = min(backoff_max, delay * 2)
 
@@ -662,6 +685,7 @@ class Node:
             return "SERVER_REJECT: 服务器回了意料之外的消息"
         self.spool.ack(int(first.get("last_eid") or 0))
         log.info(f"注册成功，开始补发本地积压 {self.spool.pending()} 条")
+        self.status("online")
         self.unclean = False
         state = {"last_rx": time.time()}
 
@@ -712,20 +736,24 @@ class Node:
         finally:
             for t in tasks:
                 t.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
 
 
 # ====================================================================== 入口
-def setup_logging(data_dir: str) -> None:
+def setup_logging(data_dir: str) -> list[logging.Handler]:
     log.setLevel(logging.INFO)
     fmt = logging.Formatter("%(asctime)s %(levelname)s %(message)s", "%Y-%m-%d %H:%M:%S")
     fh = logging.handlers.RotatingFileHandler(os.path.join(data_dir, "node.log"), maxBytes=2_000_000,
                                               backupCount=5, encoding="utf-8")
     fh.setFormatter(fmt)
     log.addHandler(fh)
+    handlers = [fh]
     if sys.stderr is not None:  # pythonw.exe 下没有控制台
         sh = logging.StreamHandler()
         sh.setFormatter(fmt)
         log.addHandler(sh)
+        handlers.append(sh)
+    return handlers
 
 
 def single_instance(data_dir: str):
@@ -739,6 +767,7 @@ def single_instance(data_dir: str):
             import fcntl
             fcntl.flock(fp, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError:
+        fp.close()
         return None
     return fp
 
@@ -751,7 +780,7 @@ def load_config(path: str) -> dict:
     return cfg
 
 
-async def amain(cfg: dict) -> None:
+async def amain(cfg: dict, on_status=None) -> None:
     spool = Spool(os.path.join(cfg["data_dir"], "spool.db"))
     unclean = spool.get("clean_exit", "1") != "1"
     spool.set("clean_exit", "0")
@@ -764,14 +793,21 @@ async def amain(cfg: dict) -> None:
                     "强烈建议在 client_config.json 里填上项目所在的目录")
     if lost:
         log.warning(f"上次有 {len(lost)} 个任务没跑完，已记为“被中断”并排队上报：{', '.join(lost)}")
-    node = Node(cfg, spool, ex)
+    node = Node(cfg, spool, ex, on_status)
     node.unclean = unclean
     if cfg.get("keep_awake"):
         keep_awake(True)
     try:
         await node.forever()
     finally:
-        spool.set("clean_exit", "1")
+        try:
+            await ex.shutdown()
+            if not spool.unfinished_jobs():
+                spool.set("clean_exit", "1")
+        finally:
+            if cfg.get("keep_awake"):
+                keep_awake(False)
+            spool.db.close()
 
 
 def config_problems(cfg: dict) -> list[str]:

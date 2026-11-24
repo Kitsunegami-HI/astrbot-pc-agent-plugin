@@ -12,7 +12,7 @@
                     └──────── 输出 / 额度 / 验收结果 ─────────────────────────┘
 ```
 
-**AstrBot 在云服务器、AI 工具在你自己的 Windows 上？** 用「远程节点」模式：Windows 上常驻一个小客户端主动连服务器，
+**AstrBot 在云服务器、AI 工具在你自己的 Windows 上？** 用「远程节点」模式：在 Windows EXE 中填写服务器地址，客户端主动连上服务器，
 校园网断线、宿舍半夜拉闸都不丢任务输出，见[第十节](#十远程节点windows-客户端--校园网--宿舍断电场景)。
 
 各版本改了什么，见同目录的 `CHANGELOG.md`。
@@ -32,7 +32,7 @@
 - 服务端：`aiohttp>=3.8`（远程节点监听用）。AstrBot 安装插件时会自动装插件目录下的 `requirements.txt`，
   AstrBot 本身一般也已带 aiohttp；如果没装上，在 AstrBot 所用的 Python 环境里手动执行 `pip install "aiohttp>=3.8"`。
   不用远程节点的话，缺了它也不影响本机模式。
-- Windows 节点客户端：`websockets>=12`。`install_node.ps1` 会自动执行 `pip install --user -r requirements.txt`，
+- Windows 节点客户端：EXE 自带 Python 和 WebSocket 依赖。用脚本版时需要 `websockets>=12`，`install_node.ps1` 会自动执行 `pip install --user -r requirements.txt`，
   失败时会停下并提示；也可以手动执行 `py -3 -m pip install --user "websockets>=12"`。
 
 前提：跑 AstrBot 的机器上，`codex` / `claude` 等命令**在终端里本来就能用、已登录**。
@@ -336,7 +336,7 @@ AstrBot 的模型可以自己调用 `remote_pc_agent` 开任务。工具内部�
 输出实时传回来。排队、验收关卡、额度等待、多项目、会话接回、自主模式全部照常工作，只是“在哪台机器上跑”变了。
 
 ```
-QQ ──→ AstrBot（云服务器，插件监听 wss） ←══ wss 长连接（Windows 主动连出）══ pc_agent_node.py（宿舍 Windows）
+QQ ──→ AstrBot（云服务器，插件监听 wss） ←══ wss 长连接（Windows 主动连出）══ AstrBotPCAgent.exe（宿舍 Windows）
                                                                                       │ 本地 SQLite 队列（落盘）
                                                                                       └─ codex / npm test …
 ```
@@ -378,6 +378,28 @@ QQ ──→ AstrBot（云服务器，插件监听 wss） ←══ wss 长连�
 | `node_interrupted_policy` | 节点断电 / 崩溃打断了一轮：`ask` 停下等你；`resume` 重连后自动续跑（最多 3 次） | ask |
 
 ### 2. Windows 客户端安装
+
+#### 图形界面（Windows x64）
+
+1. 双击 `AstrBotPCAgent.exe`。填写服务器地址，例如 `wss://bot.example.com/pc-agent/ws`。
+   只填 `wss://` 加域名时会补上 `/pc-agent/ws`。如果服务端改过 `node_ws_path`，填写带自定义路径的完整地址。
+2. 填写 `nodes` 里的节点名和 Token，添加至少一个本机项目目录。服务端配置里的项目路径需要在这些目录下。
+3. 点击「保存并连接」。显示「已注册并在线」后，在 QQ 里发 `/pc node` 查看节点状态。
+   窗口可最小化，断网时会自动重连。点击「断开」或关闭窗口会中断当前运行的任务，已落盘的结果会在下次连接同一节点时补发。
+
+配置保存在 `%LOCALAPPDATA%\AstrBotPCAgent\client_config.json`，其中含 Token。关闭程序后，可按示例配置文件在这里补充 `ca_file`、`allowed_commands` 等选项。
+日志和 SQLite 队列在同目录的 `node_data\` 下，按服务器地址和节点分别存放。在窗口中点击「打开日志目录」可查看当前节点的日志。
+已有脚本版节点时，请先等原客户端回传完任务结果，再停掉原客户端（包括同节点的计划任务），然后用同一节点名在 EXE 里连接。
+
+从源码打包时，在安装了 64 位 Python 3.13（含 Tcl/Tk）的 Windows 上执行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\node_client\build_windows.ps1
+```
+
+产物在 `node_client\.windows-build\dist\AstrBotPCAgent.exe`。Windows 端的 Codex、Claude Code 等 CLI 仍需按插件配置安装并登录。
+
+#### Python 脚本版（支持免登录开机自启）
 
 1. 把插件里的 `node_client` 文件夹复制到 Windows 上，比如 `D:\pc_agent_node\`。需要 Python 3.9+（已装）。
    **只复制源码**：如果你在别的机器上跑过它，**不要**把 `node_data/`（本地队列、日志）和 `client_config.json`（含 token）
@@ -455,7 +477,7 @@ QQ ──→ AstrBot（云服务器，插件监听 wss） ←══ wss 长连�
 - **BIOS 来电自动开机**：开机按 Del/F2 进 BIOS，找 `Restore on AC Power Loss` / `AC Power Recovery` / `After Power Failure`，
   设为 **Power On**。笔记本一般没有这个选项：插着电源时，来电后笔记本不会自己开机，只能靠早上有人按电源键
   （或者给笔记本保持电池供电过夜，它根本就不会断）。
-- 用 `install_node.ps1` 的默认方式安装（保存密码 → 不需要登录也能自启），否则断电重启后会停在登录界面。
+- 需要断电重启后免登录自启时，用脚本版 `install_node.ps1` 的默认方式安装（保存密码）。图形版 EXE 需要打开窗口并点击连接。
 - 安装脚本已关闭快速启动和休眠（拉闸后快速启动的“混合关机”状态反而可能出问题）。
 - 想让 AI 少受中断影响：把大任务拆小，或在 24:00 前避开长任务；被中断的那一轮重跑时，AI 会先看项目当前状态再继续。
 
