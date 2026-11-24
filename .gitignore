@@ -12,6 +12,7 @@ node.lock
 # Python 缓存
 __pycache__/
 *.pyc
+node_client/.windows-build/
 # 系统杂项
 .DS_Store
 Thumbs.db

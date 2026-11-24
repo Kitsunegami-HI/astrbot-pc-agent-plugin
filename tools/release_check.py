@@ -19,6 +19,7 @@ FORBIDDEN = [
     "*/node_data/*", "node_data/*", "*/spool.db", "*/spool.db-*", "*/client_config.json",
     "*.log", "*/__pycache__/*", "*.pyc", "*.pyo", "*/.DS_Store", "*/Thumbs.db", "*/node.lock",
     "*/tasks.json", "*/nodes_state.json", "*/.env", "*.pem", "*.key", "*.tmp", "*/.git/*",
+    "*/.windows-build/*",
 ]
 # 内容规则：必须处理的
 HARD = [
@@ -36,7 +37,7 @@ SOFT = [
 SAFE_DOMAINS = {"example.com", "bot.example.com", "www.msftconnecttest.com", "msftconnecttest.com",
                 "claude.com", "github.com", "www.baidu.com"}
 SAFE_NUMBERS = {"1732370400", "1800000000", "1000000"}  # 文档里的额度时间戳示例等
-EXCLUDE_DIRS = {"__pycache__", "node_data", ".git"}
+EXCLUDE_DIRS = {"__pycache__", "node_data", ".git", ".windows-build"}
 
 
 def forbidden(name: str) -> bool:
